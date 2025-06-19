@@ -1,0 +1,70 @@
+name: Deploy Odoo Instance
+
+on:
+  # Permite disparar el workflow manualmente desde la pestaña "Actions" de GitHub
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: 'Nombre del proyecto (ej. clientealpha)'
+        required: true
+        type: string
+      odoo_version:
+        description: 'Versión de Odoo (ej. 16.0)'
+        required: true
+        type: string
+      odoo_web_port:
+        description: 'Puerto público para la web de Odoo'
+        required: true
+        type: string
+      odoo_longpolling_port:
+        description: 'Puerto público para Longpolling'
+        required: true
+        type: string
+      domain_name:
+        description: 'Dominio principal (ej. odoovps.es)'
+        required: true
+        type: string
+        default: 'odoovps.es'
+
+jobs:
+  deploy:
+    name: Deploy Odoo to Server
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: 2. Install SSH Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.ODOO_SERVER_SSH_KEY }}
+
+      - name: 3. Install Dependencies on Runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client gettext-base # gettext-base para el comando 'envsubst'
+
+      - name: 4. Run Deployment Script
+        env:
+          # --- Mapeo de inputs y secretos a variables de entorno para el script ---
+          # Inputs del formulario de GitHub Actions
+          INPUT_PROJECT_NAME: ${{ github.event.inputs.project_name }}
+          INPUT_ODOO_VERSION: ${{ github.event.inputs.odoo_version }}
+          INPUT_ODOO_WEB_PORT: ${{ github.event.inputs.odoo_web_port }}
+          INPUT_ODOO_LONGPOLLING_PORT: ${{ github.event.inputs.odoo_longpolling_port }}
+          INPUT_DOMAIN_NAME: ${{ github.event.inputs.domain_name }}
+
+          # Secretos del repositorio
+          ODOO_SERVER_IP: ${{ secrets.ODOO_SERVER_IP }}
+          ODOO_SERVER_USER: ${{ secrets.ODOO_SERVER_USER }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SUPERUSER: ${{ secrets.DB_SUPERUSER }}
+          DB_SUPERUSER_PASS: ${{ secrets.DB_SUPERUSER_PASS }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          GENERIC_ODOO_ADMIN_PASS: ${{ secrets.GENERIC_ODOO_ADMIN_PASS }}
+          GENERIC_DB_CLIENT_PASS: ${{ secrets.GENERIC_DB_CLIENT_PASS }}
+        run: |
+          chmod +x ./scripts/deploy_odoo.sh
+          ./scripts/deploy_odoo.sh

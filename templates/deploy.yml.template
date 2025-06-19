@@ -1,0 +1,40 @@
+service: odoo-${PROJECT_NAME_LOWER}-production
+image: ${DOCKERHUB_USERNAME}/${PROJECT_NAME_LOWER}-production
+servers:
+  - ${ODOO_SERVER_IP}
+
+registry:
+  username: ${DOCKERHUB_USERNAME}
+  password:
+    - DOCKERHUB_TOKEN
+
+env:
+  secret:
+    - ODOO_ADMIN_PASSWD
+    - DB_PASSWORD
+  clear:
+    DB_HOST: ${DB_HOST}
+    DB_PORT: ${DB_PORT}
+    DB_NAME: ${DB_NAME}
+    DB_USER: ${DB_USER}
+
+volumes:
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/data:/var/lib/odoo
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/private-addons:/mnt/private-addons
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/extra-addons:/mnt/extra-addons
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/enterprise:/mnt/enterprise
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/backups:/mnt/backups
+
+traefik:
+  options:
+    traefik.http.routers.odoo.entrypoints: websecure
+    traefik.http.routers.odoo.tls.certresolver: myresolver
+  labels:
+    traefik.network: traefik-net
+    traefik.http.services.odoo.loadbalancer.server.port: 8069
+
+hosts:
+  - ${TRAEFIK_HOST}
+publish:
+  - ${ODOO_WEB_PORT}:8069
+  - ${ODOO_LONGPOLLING_PORT}:8072

@@ -1,0 +1,15 @@
+[options]
+; Las contraseñas se cargarán desde el entorno del contenedor de Kamal
+admin_passwd = ${ODOO_ADMIN_PASSWD}
+addons_path = /mnt/enterprise,/mnt/private-addons,/mnt/extra-addons
+data_dir = /var/lib/odoo
+db_host = ${DB_HOST}
+db_name = ${DB_NAME}
+db_user = ${DB_USER}
+db_password = ${DB_PASSWORD}
+db_port = ${DB_PORT}
+proxy_mode = True
+db_sslmode = require
+web.base.url = https://${TRAEFIK_HOST}
+workers = 2
+max_cron_threads = 1
