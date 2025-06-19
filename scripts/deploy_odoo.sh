@@ -28,30 +28,41 @@ echo "Host de despliegue: https://${TRAEFIK_HOST}"
 
 # === PASO 2: APROVISIONAMIENTO DE BASE DE DATOS (EJECUCIÓN REMOTA) ===
 echo "Aprovisionando base de datos en ${DB_HOST}..."
-# Las comillas simples en 'EOF' son cruciales. Evitan que las variables se expandan localmente.
-# Se expandirán en el servidor remoto donde corre psql.
-ssh -o StrictHostKeyChecking=no ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} "PGPASSWORD=${DB_SUPERUSER_PASS} psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_SUPERUSER} -d postgres <<'EOF'
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN
-      CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';
-      ALTER USER ${DB_USER} CREATEDB;
-   END IF;
-END
-\$\$;
-DO \$\$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}') THEN
-      CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};
-   END IF;
-END
-\$\$;
-\c ${DB_NAME}
-CREATE EXTENSION IF NOT EXISTS unaccent;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+# Ejecutamos los comandos de base de datos en el servidor remoto.
+# El heredoc (<< EOF) permite enviar un script multilínea a través de SSH.
+# Las variables se expanden localmente en el runner de GH antes de enviar el script.
+ssh -o StrictHostKeyChecking=no ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
+  set -e
+  # Establecemos la contraseña para todos los comandos psql de esta sesión
+  export PGPASSWORD=${DB_SUPERUSER_PASS}
+
+  # --- 1. Crear Usuario ---
+  # Se ejecuta en la base de datos 'postgres' por defecto.
+  # El DO \$\_... es una forma segura de ejecutar un bloque condicional en PL/pgSQL.
+  psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "postgres" -c \
+    "DO \\\$\\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}'; ALTER USER ${DB_USER} CREATEDB; END IF; END \\\$\\\$;"
+  echo "Comprobación/creación de usuario completada."
+
+  # --- 2. Crear Base de Datos ---
+  # 'CREATE DATABASE' no puede estar en un bloque transaccional (DO...).
+  # Por eso, primero verificamos si existe y luego la creamos en un comando separado.
+  if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME}"; then
+    echo "La base de datos ${DB_NAME} ya existe."
+  else
+    echo "La base de datos ${DB_NAME} no existe. Creando..."
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "postgres" -c "CREATE DATABASE \"${DB_NAME}\" OWNER \"${DB_USER}\";"
+  fi
+
+  # --- 3. Crear Extensiones ---
+  # Ahora que nos hemos asegurado de que la base de datos existe, nos conectamos a ella
+  # para instalar las extensiones necesarias para Odoo.
+  psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "${DB_NAME}" -c \
+    "CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+  echo "Comprobación/creación de extensiones completada."
 EOF
-"
-echo "Base de datos aprovisionada."
+
+echo "Aprovisionamiento de base de datos completado."
 
 
 # === PASO 3: PREPARAR ARCHIVOS DE PROYECTO LOCALMENTE (EN EL RUNNER) ===
@@ -82,7 +93,6 @@ scp -r "${PROJECT_DIR_LOCAL}"/* ${ODOO_SERVER_USER}@${ODOO_SERVER_IP}:${PROJECT_
 
 # === PASO 5: EJECUTAR KAMAL REMOTAMENTE ===
 echo "Ejecutando Kamal en el servidor de destino..."
-# Aquí, las variables YA HAN SIDO expandidas porque no usamos comillas en el primer EOF.
 ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   set -e
   cd ${PROJECT_DIR_REMOTE}
