@@ -26,6 +26,12 @@ servers:
         - ${ODOO_WEB_PORT}:8069
         - ${ODOO_LONGPOLLING_PORT}:8072
 
+# --- Configuración SSH para Kamal ---
+# Se define explícitamente el usuario que Kamal debe usar para sus conexiones SSH internas.
+# Esto resuelve el error de autenticación.
+ssh:
+  user: ${ODOO_SERVER_USER}
+
 # --- Credenciales del Registry ---
 registry:
   username: ${DOCKERHUB_USERNAME}
@@ -49,6 +55,6 @@ volumes:
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/private-addons:/mnt/private-addons
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/extra-addons:/mnt/extra-addons
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/enterprise:/mnt/enterprise
-  - /opt/odo_projects/${PROJECT_FULL_NAME}/backups:/mnt/backups
+  - /opt/odoo_projects/${PROJECT_FULL_NAME}/backups:/mnt/backups # Corregido error tipográfico (odo -> odoo)
 
 # --- Se omite la sección 'accessories' porque nuestra arquitectura usa una base de datos externa. ---
