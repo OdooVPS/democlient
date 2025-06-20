@@ -105,26 +105,17 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
     git commit -m "Initial commit for Kamal deployment" > /dev/null 2>&1
   fi
 
-  # --- CORRECCIÓN CLAVE ---
-  # Creamos el directorio y el archivo de secretos que Kamal espera.
-  # Este archivo es utilizado por el builder y otros comandos de Kamal.
-  echo "Creando archivo .kamal/secrets.yml para Kamal..."
-  mkdir -p .kamal
-  cat << EOT > .kamal/secrets.yml
-DOCKERHUB_TOKEN: \$DOCKER_TOKEN
-ODOO_ADMIN_PASSWD: \$ADMIN_PASS
-DB_PASSWORD: \$DB_PASS
-EOT
-
   # Creamos el .env para los secretos de la aplicación que se subirán con 'kamal env push'.
   echo "Creando archivo .env para la aplicación..."
   echo "ODOO_ADMIN_PASSWD=\$ADMIN_PASS" > .env
   echo "DB_PASSWORD=\$DB_PASS" >> .env
   
-  # Ejecutar Kamal pasando la versión como un argumento.
-  kamal setup
+  # --- CORRECCIÓN CLAVE ---
+  # Ejecutar Kamal pasando la contraseña del registro y la versión explícitamente.
+  # Esto elimina la necesidad de que Kamal encuentre archivos de secretos para la autenticación del registro.
+  kamal --registry-password="\$DOCKER_TOKEN" setup
   kamal env push
-  kamal deploy --version="\$RUN_ID"
+  kamal --registry-password="\$DOCKER_TOKEN" deploy --version="\$RUN_ID"
 EOF
 
 echo "✅ ✅ ✅ ¡DESPLIEGUE COMPLETADO EXITOSAMENTE! ✅ ✅ ✅"
