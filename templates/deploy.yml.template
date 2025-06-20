@@ -37,7 +37,7 @@ registry:
 # Adaptado para nuestra arquitectura con base de datos externa.
 env:
   secret:
-    - ODOO_MASTER_PASSWORD  # Usamos este nombre para coincidir con tu ejemplo
+    - ODOO_ADMIN_PASSWD  # Revertido al nombre de secreto original
     - DB_PASSWORD
   clear:
     DB_HOST: ${DB_HOST}
