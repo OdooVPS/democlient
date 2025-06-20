@@ -8,13 +8,11 @@ builder:
 
 # --- Servidores y Roles ---
 # Se utiliza la sintaxis explícita de rol 'web' que funciona en tu servidor.
-# Toda la configuración de red (puertos, traefik) va anidada aquí dentro.
 servers:
   web:
     hosts:
       - ${ODOO_SERVER_IP}
     # Las etiquetas de Traefik se definen aquí para el rol 'web'.
-    # Usamos la variable ${service} de Kamal para que los nombres de los routers sean únicos.
     labels:
       traefik.enable: "true"
       traefik.http.routers.${service}.rule: Host(`${TRAEFIK_HOST}`)
@@ -22,10 +20,11 @@ servers:
       traefik.http.routers.${service}.tls.certresolver: myresolver
       traefik.http.services.${service}.loadbalancer.server.port: 8069
       traefik.network: traefik-net
-    # Los puertos se publican aquí para el rol 'web'.
-    publish:
-      - ${ODOO_WEB_PORT}:8069
-      - ${ODOO_LONGPOLLING_PORT}:8072
+    # Las opciones, incluyendo la publicación de puertos, van aquí.
+    options:
+      publish:
+        - ${ODOO_WEB_PORT}:8069
+        - ${ODOO_LONGPOLLING_PORT}:8072
 
 # --- Credenciales del Registry ---
 registry:
@@ -34,10 +33,9 @@ registry:
     - DOCKERHUB_TOKEN
 
 # --- Variables de Entorno para Odoo ---
-# Adaptado para nuestra arquitectura con base de datos externa.
 env:
   secret:
-    - ODOO_ADMIN_PASSWD  # Revertido al nombre de secreto original
+    - ODOO_ADMIN_PASSWD
     - DB_PASSWORD
   clear:
     DB_HOST: ${DB_HOST}
@@ -46,12 +44,11 @@ env:
     DB_USER: ${DB_USER}
 
 # --- Volúmenes ---
-# Usamos nuestros volúmenes de host para addons, datos, etc.
 volumes:
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/data:/var/lib/odoo
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/private-addons:/mnt/private-addons
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/extra-addons:/mnt/extra-addons
   - /opt/odoo_projects/${PROJECT_FULL_NAME}/enterprise:/mnt/enterprise
-  - /opt/odoo_projects/${PROJECT_FULL_NAME}/backups:/mnt/backups
+  - /opt/odo_projects/${PROJECT_FULL_NAME}/backups:/mnt/backups
 
 # --- Se omite la sección 'accessories' porque nuestra arquitectura usa una base de datos externa. ---
