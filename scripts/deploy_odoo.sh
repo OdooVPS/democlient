@@ -46,7 +46,7 @@ PROJECT_DIR_LOCAL="./${PROJECT_FULL_NAME}"
 mkdir -p "${PROJECT_DIR_LOCAL}/config"
 echo "Directorio de trabajo local creado: ${PROJECT_DIR_LOCAL}"
 
-VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME $GITHUB_RUN_ID'
+VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME'
 envsubst "$VARS_TO_SUBSTITUTE" < ./templates/deploy.yml.template > "${PROJECT_DIR_LOCAL}/config/deploy.yml"
 envsubst < ./templates/odoo.conf.template > "${PROJECT_DIR_LOCAL}/config/odoo.conf"
 cat << EOF > "${PROJECT_DIR_LOCAL}/Dockerfile"
@@ -73,6 +73,7 @@ DOCKER_TOKEN_B64=$(echo -n "${DOCKERHUB_TOKEN}" | base64 -w 0)
 ADMIN_PASS_B64=$(echo -n "${ODOO_ADMIN_PASSWD}" | base64 -w 0)
 DB_PASS_B64=$(echo -n "${DB_PASSWORD}" | base64 -w 0)
 RUN_ID_B64=$(echo -n "${GITHUB_RUN_ID}" | base64 -w 0)
+DOCKER_USER_B64=$(echo -n "${DOCKERHUB_USERNAME}" | base64 -w 0)
 
 # El heredoc se ejecuta en el servidor remoto.
 ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
@@ -84,6 +85,7 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   ADMIN_PASS=\$(echo "${ADMIN_PASS_B64}" | base64 -d)
   DB_PASS=\$(echo "${DB_PASS_B64}" | base64 -d)
   RUN_ID=\$(echo "${RUN_ID_B64}" | base64 -d)
+  DOCKER_USER=\$(echo "${DOCKER_USER_B64}" | base64 -d)
 
   # Creamos el archivo de clave privada.
   KEY_PATH="/root/.ssh/kamal_deploy_key"
@@ -91,19 +93,24 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   echo "\$SSH_KEY" > "\$KEY_PATH"
   chmod 600 "\$KEY_PATH"
   echo "Clave SSH para Kamal creada en el servidor."
+  
+  # --- CORRECCIÓN CLAVE ---
+  # Realizamos el login a Docker manualmente para asegurar la autenticación.
+  # Kamal usará la configuración de login existente en ~/.docker/config.json
+  echo "Realizando login a Docker Hub..."
+  echo "\$DOCKER_TOKEN" | docker login --username "\$DOCKER_USER" --password-stdin
 
   # Nos movemos al directorio del proyecto.
   cd "${PROJECT_DIR_REMOTE}"
 
-  # --- CORRECCIÓN CLAVE ---
-  # Se inicializa un repositorio Git falso para satisfacer la dependencia de Kamal.
+  # Inicializamos un repositorio Git falso.
   if [ ! -d ".git" ]; then
     echo "Inicializando repositorio Git falso para Kamal..."
-    git init
-    git config user.name "GitHub Actions"
-    git config user.email "actions@github.com"
-    git add .
-    git commit -m "Initial commit for Kamal deployment"
+    git init -b main > /dev/null 2>&1
+    git config user.name "GitHub Actions" > /dev/null 2>&1
+    git config user.email "actions@github.com" > /dev/null 2>&1
+    git add . > /dev/null 2>&1
+    git commit -m "Initial commit for Kamal deployment" > /dev/null 2>&1
   fi
 
   # Creamos el .env para los secretos.
@@ -112,7 +119,6 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   echo "DB_PASSWORD=\$DB_PASS" >> .env
 
   # Ejecutar Kamal pasando la versión como un argumento.
-  # Aunque ahora podría funcionar sin --version, lo mantenemos por robustez.
   kamal setup
   kamal env push
   kamal deploy --version="\$RUN_ID"
