@@ -11,8 +11,8 @@ image: ${DOCKERHUB_USERNAME}/${PROJECT_NAME_LOWER}-production
 # Se configura el builder para que use el driver de Docker local,
 # aprovechando la sesión de login que ya hemos establecido.
 builder:
-  local:
-    arch: amd64
+  local: true
+  arch: amd64
 
 # --- Servidores y Roles ---
 servers:
