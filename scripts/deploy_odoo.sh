@@ -45,14 +45,11 @@ PROJECT_DIR_LOCAL="./${PROJECT_FULL_NAME}"
 mkdir -p "${PROJECT_DIR_LOCAL}/config"
 echo "Directorio de trabajo local creado: ${PROJECT_DIR_LOCAL}"
 
-# Se define una lista explícita de variables para 'envsubst',
-# para proteger la variable especial '${service}' de Kamal.
 VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME'
 
 envsubst "$VARS_TO_SUBSTITUTE" < ./templates/deploy.yml.template > "${PROJECT_DIR_LOCAL}/config/deploy.yml"
 envsubst < ./templates/odoo.conf.template > "${PROJECT_DIR_LOCAL}/config/odoo.conf"
 
-# Creamos el Dockerfile directamente
 cat << EOF > "${PROJECT_DIR_LOCAL}/Dockerfile"
 FROM odoo:${ODOO_VERSION}
 COPY config/odoo.conf /etc/odoo/odoo.conf
@@ -70,34 +67,28 @@ scp -r "${PROJECT_DIR_LOCAL}"/* ${ODOO_SERVER_USER}@${ODOO_SERVER_IP}:${PROJECT_
 
 # === PASO 5: EJECUTAR KAMAL REMOTAMENTE ===
 echo "Ejecutando Kamal en el servidor de destino..."
-# Usamos comillas simples en el primer EOF ('EOF') para evitar que las variables
-# se expandan localmente. Se pasarán como texto literal al servidor remoto.
-# El comando `bash -s` ejecutará este bloque como un script, aceptando los
-# argumentos que se le pasan al final.
-ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} 'bash -s' \
-  "${ODOO_SERVER_SSH_KEY}" \
-  "${PROJECT_DIR_REMOTE}" \
-  "${DOCKERHUB_TOKEN}" \
-  "${ODOO_ADMIN_PASSWD}" \
-  "${DB_PASSWORD}" << 'EOF'
+# --- CORRECCIÓN CLAVE ---
+# Inyectamos las variables directamente en el script que se ejecuta remotamente.
+# El comando `bash` remoto leerá este bloque de script completo.
+ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   set -e
-  # --- CORRECCIÓN CLAVE ---
-  # Creamos el archivo de clave privada para que Kamal pueda usarlo.
-  # La variable $1 contiene el contenido de la clave SSH pasada como primer argumento.
+  # Definimos las variables dentro del script remoto.
+  # El uso de 'cat << "EOT"' y 'EOT' previene la expansión de caracteres especiales.
   KEY_PATH="/root/.ssh/kamal_deploy_key"
   mkdir -p /root/.ssh
-  echo "$1" > "$KEY_PATH"
-  chmod 600 "$KEY_PATH"
+  cat << "EOT" > "\$KEY_PATH"
+${ODOO_SERVER_SSH_KEY}
+EOT
+  chmod 600 "\$KEY_PATH"
   echo "Clave SSH para Kamal creada en el servidor."
 
-  # Nos movemos al directorio del proyecto, pasado como segundo argumento ($2).
-  cd "$2"
+  PROJECT_DIR_REMOTE="${PROJECT_DIR_REMOTE}"
+  cd "\${PROJECT_DIR_REMOTE}"
 
-  # Creamos el .env para los secretos que necesita Kamal en el servidor
-  # usando los argumentos $3, $4 y $5.
-  echo "DOCKERHUB_TOKEN=$3" > .env
-  echo "ODOO_ADMIN_PASSWD=$4" >> .env
-  echo "DB_PASSWORD=$5" >> .env
+  # Creamos el .env para los secretos que necesita Kamal.
+  echo "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN}" > .env
+  echo "ODOO_ADMIN_PASSWD=${ODOO_ADMIN_PASSWD}" >> .env
+  echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
 
   # Ejecutar Kamal
   kamal setup
