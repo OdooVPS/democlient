@@ -30,33 +30,18 @@ echo "Host de despliegue: https://${TRAEFIK_HOST}"
 echo "Aprovisionando base de datos en ${DB_HOST}..."
 
 # Ejecutamos los comandos de base de datos en el servidor remoto.
-# El heredoc (<< EOF) permite enviar un script multilínea a través de SSH.
-# Las variables se expanden localmente en el runner de GH antes de enviar el script.
 ssh -o StrictHostKeyChecking=no ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   set -e
-  # Establecemos la contraseña para todos los comandos psql de esta sesión
   export PGPASSWORD=${DB_SUPERUSER_PASS}
-
-  # --- 1. Crear Usuario ---
-  # Se ejecuta en la base de datos 'postgres' por defecto.
-  # El DO \$\_... es una forma segura de ejecutar un bloque condicional en PL/pgSQL.
   psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "postgres" -c \
     "DO \\\$\\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}'; ALTER USER ${DB_USER} CREATEDB; END IF; END \\\$\\\$;"
   echo "Comprobación/creación de usuario completada."
-
-  # --- 2. Crear Base de Datos ---
-  # 'CREATE DATABASE' no puede estar en un bloque transaccional (DO...).
-  # Por eso, primero verificamos si existe y luego la creamos en un comando separado.
   if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME}"; then
     echo "La base de datos ${DB_NAME} ya existe."
   else
     echo "La base de datos ${DB_NAME} no existe. Creando..."
     psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "postgres" -c "CREATE DATABASE \"${DB_NAME}\" OWNER \"${DB_USER}\";"
   fi
-
-  # --- 3. Crear Extensiones ---
-  # Ahora que nos hemos asegurado de que la base de datos existe, nos conectamos a ella
-  # para instalar las extensiones necesarias para Odoo.
   psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_SUPERUSER}" -d "${DB_NAME}" -c \
     "CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
   echo "Comprobación/creación de extensiones completada."
@@ -70,8 +55,12 @@ PROJECT_DIR_LOCAL="./${PROJECT_FULL_NAME}"
 mkdir -p "${PROJECT_DIR_LOCAL}/config"
 echo "Directorio de trabajo local creado: ${PROJECT_DIR_LOCAL}"
 
-# Usamos 'envsubst' para reemplazar las variables en las plantillas. Es más limpio que 'sed'.
-envsubst < ./templates/deploy.yml.template > "${PROJECT_DIR_LOCAL}/config/deploy.yml"
+# --- CORRECCIÓN CLAVE ---
+# Se define una lista explícita de variables para 'envsubst',
+# para proteger la variable especial '${service}' de Kamal.
+VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME'
+
+envsubst "$VARS_TO_SUBSTITUTE" < ./templates/deploy.yml.template > "${PROJECT_DIR_LOCAL}/config/deploy.yml"
 envsubst < ./templates/odoo.conf.template > "${PROJECT_DIR_LOCAL}/config/odoo.conf"
 
 # Creamos el Dockerfile directamente
