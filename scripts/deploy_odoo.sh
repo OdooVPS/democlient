@@ -128,4 +128,4 @@ EOT
 EOF
 
 echo "✅ ✅ ✅ ¡DESPLIEGUE COMPLETADO EXITOSAMENTE! ✅ ✅ ✅"
-echo "Instancia disponible en: https://${TRAEFIK_HOST}"
+echo "Instancia disponible en: https://${TRAFIK_HOST}"
