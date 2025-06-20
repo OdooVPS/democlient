@@ -35,6 +35,7 @@ traefik:
 
 hosts:
   - ${TRAEFIK_HOST}
+
 publish:
   - ${ODOO_WEB_PORT}:8069
   - ${ODOO_LONGPOLLING_PORT}:8072
