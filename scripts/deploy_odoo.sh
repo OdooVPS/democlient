@@ -95,20 +95,24 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   # Nos movemos al directorio del proyecto.
   cd "${PROJECT_DIR_REMOTE}"
 
+  # --- CORRECCIÓN CLAVE ---
+  # Se inicializa un repositorio Git falso para satisfacer la dependencia de Kamal.
+  if [ ! -d ".git" ]; then
+    echo "Inicializando repositorio Git falso para Kamal..."
+    git init
+    git config user.name "GitHub Actions"
+    git config user.email "actions@github.com"
+    git add .
+    git commit -m "Initial commit for Kamal deployment"
+  fi
+
   # Creamos el .env para los secretos.
   echo "DOCKERHUB_TOKEN=\$DOCKER_TOKEN" > .env
   echo "ODOO_ADMIN_PASSWD=\$ADMIN_PASS" >> .env
   echo "DB_PASSWORD=\$DB_PASS" >> .env
-  
-  # --- PASO DE DEPURACIÓN Y VERIFICACIÓN ---
-  # Comprobamos si la variable RUN_ID está vacía. Si lo está, el despliegue fallará.
-  if [ -z "\$RUN_ID" ]; then
-    echo "ERROR CRÍTICO: El GITHUB_RUN_ID llegó vacío al servidor remoto. Abortando."
-    exit 1
-  fi
-  echo ">>> Desplegando Kamal con la versión explícita: \$RUN_ID"
 
   # Ejecutar Kamal pasando la versión como un argumento.
+  # Aunque ahora podría funcionar sin --version, lo mantenemos por robustez.
   kamal setup
   kamal env push
   kamal deploy --version="\$RUN_ID"
