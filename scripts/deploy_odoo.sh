@@ -16,7 +16,6 @@ export ODOO_VERSION="${INPUT_ODOO_VERSION}"
 export ODOO_WEB_PORT="${INPUT_ODOO_WEB_PORT}"
 export ODOO_LONGPOLLING_PORT="${INPUT_ODOO_LONGPOLLING_PORT}"
 export ODOO_ADMIN_PASSWD="${GENERIC_ODOO_ADMIN_PASS}"
-# Exportamos la nueva variable para que envsubst la pueda usar.
 export GITHUB_RUN_ID="${GITHUB_RUN_ID}"
 echo "Variables preparadas para el proyecto: ${PROJECT_FULL_NAME}"
 echo "Host de despliegue: https://${TRAEFIK_HOST}"
@@ -47,7 +46,6 @@ PROJECT_DIR_LOCAL="./${PROJECT_FULL_NAME}"
 mkdir -p "${PROJECT_DIR_LOCAL}/config"
 echo "Directorio de trabajo local creado: ${PROJECT_DIR_LOCAL}"
 
-# Añadimos GITHUB_RUN_ID a la lista de variables a sustituir.
 VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME $GITHUB_RUN_ID'
 
 envsubst "$VARS_TO_SUBSTITUTE" < ./templates/deploy.yml.template > "${PROJECT_DIR_LOCAL}/config/deploy.yml"
@@ -70,25 +68,43 @@ scp -r "${PROJECT_DIR_LOCAL}"/* ${ODOO_SERVER_USER}@${ODOO_SERVER_IP}:${PROJECT_
 
 # === PASO 5: EJECUTAR KAMAL REMOTAMENTE ===
 echo "Ejecutando Kamal en el servidor de destino..."
-ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} 'bash -s' \
-  "${ODOO_SERVER_SSH_KEY}" \
-  "${PROJECT_DIR_REMOTE}" \
-  "${DOCKERHUB_TOKEN}" \
-  "${ODOO_ADMIN_PASSWD}" \
-  "${DB_PASSWORD}" << 'EOF'
+
+# --- CORRECCIÓN CLAVE ---
+# Se codifican las variables en Base64 para pasarlas de forma segura al script remoto.
+# El '-w 0' evita que el comando base64 añada saltos de línea.
+SSH_KEY_B64=$(echo -n "${ODOO_SERVER_SSH_KEY}" | base64 -w 0)
+DOCKER_TOKEN_B64=$(echo -n "${DOCKERHUB_TOKEN}" | base64 -w 0)
+ADMIN_PASS_B64=$(echo -n "${ODOO_ADMIN_PASSWD}" | base64 -w 0)
+DB_PASS_B64=$(echo -n "${DB_PASSWORD}" | base64 -w 0)
+
+# El heredoc se ejecuta en el servidor remoto.
+# Las variables locales (_B64) se expanden aquí y se envían.
+ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   set -e
+  
+  # Decodificamos las variables en el servidor remoto para usarlas de forma segura.
+  # El comando 'base64 -d' decodifica el string.
+  SSH_KEY=\$(echo "${SSH_KEY_B64}" | base64 -d)
+  DOCKER_TOKEN=\$(echo "${DOCKER_TOKEN_B64}" | base64 -d)
+  ADMIN_PASS=\$(echo "${ADMIN_PASS_B64}" | base64 -d)
+  DB_PASS=\$(echo "${DB_PASS_B64}" | base64 -d)
+
+  # Creamos el archivo de clave privada para que Kamal pueda usarlo.
   KEY_PATH="/root/.ssh/kamal_deploy_key"
   mkdir -p /root/.ssh
-  echo "$1" > "$KEY_PATH"
-  chmod 600 "$KEY_PATH"
+  echo "\$SSH_KEY" > "\$KEY_PATH"
+  chmod 600 "\$KEY_PATH"
   echo "Clave SSH para Kamal creada en el servidor."
 
-  cd "$2"
+  # Nos movemos al directorio del proyecto.
+  cd "${PROJECT_DIR_REMOTE}"
 
-  echo "DOCKERHUB_TOKEN=$3" > .env
-  echo "ODOO_ADMIN_PASSWD=$4" >> .env
-  echo "DB_PASSWORD=$5" >> .env
+  # Creamos el .env para los secretos que necesita Kamal.
+  echo "DOCKERHUB_TOKEN=\$DOCKER_TOKEN" > .env
+  echo "ODOO_ADMIN_PASSWD=\$ADMIN_PASS" >> .env
+  echo "DB_PASSWORD=\$DB_PASS" >> .env
 
+  # Ejecutar Kamal
   kamal setup
   kamal env push
   kamal deploy
