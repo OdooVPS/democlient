@@ -99,6 +99,14 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   echo "DOCKERHUB_TOKEN=\$DOCKER_TOKEN" > .env
   echo "ODOO_ADMIN_PASSWD=\$ADMIN_PASS" >> .env
   echo "DB_PASSWORD=\$DB_PASS" >> .env
+  
+  # --- PASO DE DEPURACIÓN Y VERIFICACIÓN ---
+  # Comprobamos si la variable RUN_ID está vacía. Si lo está, el despliegue fallará.
+  if [ -z "\$RUN_ID" ]; then
+    echo "ERROR CRÍTICO: El GITHUB_RUN_ID llegó vacío al servidor remoto. Abortando."
+    exit 1
+  fi
+  echo ">>> Desplegando Kamal con la versión explícita: \$RUN_ID"
 
   # Ejecutar Kamal pasando la versión como un argumento.
   kamal setup
@@ -107,4 +115,4 @@ ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
 EOF
 
 echo "✅ ✅ ✅ ¡DESPLIEGUE COMPLETADO EXITOSAMENTE! ✅ ✅ ✅"
-echo "Instancia disponible en: https://${TRAFIK_HOST}"
+echo "Instancia disponible en: https://${TRAEFIK_HOST}"
