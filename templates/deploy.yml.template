@@ -3,10 +3,6 @@
 service: odoo-${PROJECT_NAME_LOWER}-production
 image: ${DOCKERHUB_USERNAME}/${PROJECT_NAME_LOWER}-production
 
-# --- CORRECCIÓN CLAVE ---
-# Se define explícitamente la versión para que Kamal no intente usar Git.
-version: "${GITHUB_RUN_ID}"
-
 builder:
   arch: amd64
 
@@ -17,7 +13,7 @@ servers:
       - ${ODOO_SERVER_IP}
     labels:
       traefik.enable: "true"
-      traefik.http.routers.${service}.rule: Host(`${TRAFIK_HOST}`)
+      traefik.http.routers.${service}.rule: Host(`${TRAEFIK_HOST}`)
       traefik.http.routers.${service}.entrypoints: websecure
       traefik.http.routers.${service}.tls.certresolver: myresolver
       traefik.http.services.${service}.loadbalancer.server.port: 8069
