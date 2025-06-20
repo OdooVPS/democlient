@@ -5,31 +5,22 @@ set -e
 echo "--- Iniciando script de despliegue de Odoo ---"
 
 # === PASO 1: PREPARACIÓN DE VARIABLES ===
-# Usamos las variables de entorno inyectadas por el workflow de GitHub Actions.
 export PROJECT_NAME="${INPUT_PROJECT_NAME}"
 export PROJECT_NAME_LOWER=$(echo "${PROJECT_NAME}" | tr '[:upper:]' '[:lower:]')
 export PROJECT_FULL_NAME="${PROJECT_NAME_LOWER}_production"
 export TRAEFIK_HOST="${PROJECT_NAME_LOWER}.${INPUT_DOMAIN_NAME}"
-
 export DB_NAME="${PROJECT_FULL_NAME}"
 export DB_USER="u_${PROJECT_FULL_NAME}"
-# Creamos una contraseña única para la BD del cliente
 export DB_PASSWORD="${GENERIC_DB_CLIENT_PASS}_${PROJECT_NAME_LOWER}"
-
-# Exportamos el resto de variables para que 'envsubst' las pueda usar
 export ODOO_VERSION="${INPUT_ODOO_VERSION}"
 export ODOO_WEB_PORT="${INPUT_ODOO_WEB_PORT}"
 export ODOO_LONGPOLLING_PORT="${INPUT_ODOO_LONGPOLLING_PORT}"
 export ODOO_ADMIN_PASSWD="${GENERIC_ODOO_ADMIN_PASS}"
-# Las variables de Docker, Servidor y BD ya están exportadas por GitHub Actions
-
 echo "Variables preparadas para el proyecto: ${PROJECT_FULL_NAME}"
 echo "Host de despliegue: https://${TRAEFIK_HOST}"
 
 # === PASO 2: APROVISIONAMIENTO DE BASE DE DATOS (EJECUCIÓN REMOTA) ===
 echo "Aprovisionando base de datos en ${DB_HOST}..."
-
-# Ejecutamos los comandos de base de datos en el servidor remoto.
 ssh -o StrictHostKeyChecking=no ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
   set -e
   export PGPASSWORD=${DB_SUPERUSER_PASS}
@@ -46,7 +37,6 @@ ssh -o StrictHostKeyChecking=no ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
     "CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
   echo "Comprobación/creación de extensiones completada."
 EOF
-
 echo "Aprovisionamiento de base de datos completado."
 
 
@@ -55,7 +45,6 @@ PROJECT_DIR_LOCAL="./${PROJECT_FULL_NAME}"
 mkdir -p "${PROJECT_DIR_LOCAL}/config"
 echo "Directorio de trabajo local creado: ${PROJECT_DIR_LOCAL}"
 
-# --- CORRECCIÓN CLAVE ---
 # Se define una lista explícita de variables para 'envsubst',
 # para proteger la variable especial '${service}' de Kamal.
 VARS_TO_SUBSTITUTE='$PROJECT_NAME_LOWER $DOCKERHUB_USERNAME $ODOO_SERVER_IP $ODOO_SERVER_USER $TRAEFIK_HOST $ODOO_WEB_PORT $ODOO_LONGPOLLING_PORT $DB_HOST $DB_PORT $DB_NAME $DB_USER $PROJECT_FULL_NAME'
@@ -69,7 +58,6 @@ FROM odoo:${ODOO_VERSION}
 COPY config/odoo.conf /etc/odoo/odoo.conf
 RUN chown odoo:odoo /etc/odoo/odoo.conf
 EOF
-
 echo "Archivos de configuración para Kamal generados."
 
 
@@ -82,16 +70,36 @@ scp -r "${PROJECT_DIR_LOCAL}"/* ${ODOO_SERVER_USER}@${ODOO_SERVER_IP}:${PROJECT_
 
 # === PASO 5: EJECUTAR KAMAL REMOTAMENTE ===
 echo "Ejecutando Kamal en el servidor de destino..."
-ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} << EOF
+# Usamos comillas simples en el primer EOF ('EOF') para evitar que las variables
+# se expandan localmente. Se pasarán como texto literal al servidor remoto.
+# El comando `bash -s` ejecutará este bloque como un script, aceptando los
+# argumentos que se le pasan al final.
+ssh ${ODOO_SERVER_USER}@${ODOO_SERVER_IP} 'bash -s' \
+  "${ODOO_SERVER_SSH_KEY}" \
+  "${PROJECT_DIR_REMOTE}" \
+  "${DOCKERHUB_TOKEN}" \
+  "${ODOO_ADMIN_PASSWD}" \
+  "${DB_PASSWORD}" << 'EOF'
   set -e
-  cd ${PROJECT_DIR_REMOTE}
+  # --- CORRECCIÓN CLAVE ---
+  # Creamos el archivo de clave privada para que Kamal pueda usarlo.
+  # La variable $1 contiene el contenido de la clave SSH pasada como primer argumento.
+  KEY_PATH="/root/.ssh/kamal_deploy_key"
+  mkdir -p /root/.ssh
+  echo "$1" > "$KEY_PATH"
+  chmod 600 "$KEY_PATH"
+  echo "Clave SSH para Kamal creada en el servidor."
+
+  # Nos movemos al directorio del proyecto, pasado como segundo argumento ($2).
+  cd "$2"
 
   # Creamos el .env para los secretos que necesita Kamal en el servidor
-  echo "DOCKERHUB_TOKEN=${DOCKERHUB_TOKEN}" > .env
-  echo "ODOO_ADMIN_PASSWD=${ODOO_ADMIN_PASSWD}" >> .env
-  echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
+  # usando los argumentos $3, $4 y $5.
+  echo "DOCKERHUB_TOKEN=$3" > .env
+  echo "ODOO_ADMIN_PASSWD=$4" >> .env
+  echo "DB_PASSWORD=$5" >> .env
 
-  # Ejecutar Kamal (asegúrate de que kamal está instalado en el servidor de destino)
+  # Ejecutar Kamal
   kamal setup
   kamal env push
   kamal deploy
