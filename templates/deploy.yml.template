@@ -3,8 +3,16 @@
 service: odoo-${PROJECT_NAME_LOWER}-production
 image: ${DOCKERHUB_USERNAME}/${PROJECT_NAME_LOWER}-production
 
+# --- CORRECCIÓN CLAVE ---
+# Se define explícitamente la versión para que Kamal no intente usar Git.
+version: "${GITHUB_RUN_ID}"
+
+# --- CORRECCIÓN CLAVE ---
+# Se configura el builder para que use el driver de Docker local,
+# aprovechando la sesión de login que ya hemos establecido.
 builder:
-  arch: amd64
+  local:
+    arch: amd64
 
 # --- Servidores y Roles ---
 servers:
