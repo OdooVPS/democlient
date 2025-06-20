@@ -52,8 +52,6 @@ jobs:
           INPUT_DOMAIN_NAME: ${{ github.event.inputs.domain_name }}
           ODOO_SERVER_IP: ${{ secrets.ODOO_SERVER_IP }}
           ODOO_SERVER_USER: ${{ secrets.ODOO_SERVER_USER }}
-          # --- CORRECCIÓN CLAVE ---
-          # Pasamos la clave SSH al script para que pueda crearla en el servidor de destino.
           ODOO_SERVER_SSH_KEY: ${{ secrets.ODOO_SERVER_SSH_KEY }}
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
@@ -63,6 +61,9 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           GENERIC_ODOO_ADMIN_PASS: ${{ secrets.GENERIC_ODOO_ADMIN_PASS }}
           GENERIC_DB_CLIENT_PASS: ${{ secrets.GENERIC_DB_CLIENT_PASS }}
+          # --- CORRECCIÓN CLAVE ---
+          # Pasamos el ID único de la ejecución para usarlo como versión.
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           chmod +x ./scripts/deploy_odoo.sh
           ./scripts/deploy_odoo.sh
